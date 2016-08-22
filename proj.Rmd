@@ -1,0 +1,131 @@
+---
+title: 'Machine Learning Course Project'
+author: "K M Mohsin"
+date: "August 21, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+Overview
+==================
+In this project my goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to answer "how well they" do those activities. Machine learning algorithm will be developed to correctly classify the quality of barbell bicep curls by using data from above mentioned activity monitors. 
+
+More information regarding data collection and description of data is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data obtaining and cleaning
+=====================
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. In the following code chunk I am processing data to make them ready for analysis. For cross validation purpose I will split training data set in two sets. First set will be used to train and the second set will be to validate. 
+
+Obtaining data:
+------------------
+```{r}
+train_url<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training_data <- read.csv(url(train_url), na.strings=c("NA","#DIV/0!",""))
+testing_data <- read.csv(url(test_url), na.strings=c("NA","#DIV/0!",""))
+``` 
+
+Splitting traning set for Cross Validation:
+--------------------------------------------
+```{r}
+library(caret) ; set.seed(101010)                                       
+inTrain <- createDataPartition(y=training_data$classe, p=0.8, list=F)   # Splitting training set further.
+train1 <- training_data[inTrain, ]  ; train2 <- training_data[-inTrain,]
+```
+
+Cleaning and getting rid of unnecessary variables:
+----------------------------------------------------
+
+```{r}
+nzv <- nearZeroVar(train1)                                              #Near zero variance
+train1 <- train1[, -nzv]; train2 <- train2[, -nzv]                      #removing variable with near zero variance.
+mostlyNA <- sapply(train1, function(x) mean(is.na(x))) > 0.90
+train1 <- train1[, mostlyNA==F] ; train2 <- train2[, mostlyNA==F]       #removing variable with >90% NA 
+names(train1)[1:10]
+train1<-train1[,-(1:6)]; train2<-train2[,-(1:6)];                       #Removing unncessary first 6 columns.  
+dim(train1)
+cols<-colnames(train1[,-53])
+test<-testing_data[cols]
+```
+
+Machine Learning Model Building
+===============================
+In this section accuracy of "Decision Tree" and "Random Forest" based machine learning algorithm will be compared to see which one best performs in correctly identifying the class of activities for this given data set. 
+
+Decision tree (rpart):
+-----------------------
+
+```{r}
+library(rpart) ; library(rpart.plot) ; library(rattle)  #loadidng libraries for fancy plots
+modFit <- train(classe ~ .,method="rpart",data=train1)  #model fitting with decision tree
+fancyRpartPlot(modFit$finalModel)                       #fancy plotting tree
+pred<-predict(modFit,newdata = train2)
+confusionMatrix(pred,train2$classe)
+```
+
+Almost less than 50% accuracy is obtained with decision tree based algorithm which is not acceptable. 
+
+Random Forest:
+-------------
+```{r}
+library(randomForest)
+mod_rf <- randomForest(classe~.,data=train1,ntrees = 8)
+mod_rf
+```
+
+Cross validation: 
+-----------
+```{r}
+pred_rf<-predict(mod_rf,newdata=train2)
+confusionMatrix(pred_rf,train2$classe) #99.64% accuracy
+```
+
+Prediction with test set:
+--------------------------
+```{r}
+pred_test<-predict(mod_rf,newdata = test) #results of test
+pred_test
+```
+
+
+Important variables:
+--------------------
+```{r}
+varImp(mod_rf)
+varImpPlot(mod_rf)
+library(gridExtra)
+imp_columns<-c(1,2,3,41,39,53)
+newset<-train1[,imp_columns]
+pairs(newset,col=newset$classe)
+p1<-qplot(roll_belt,yaw_belt,colour=classe,data=train1)
+p2<-qplot(magnet_dumbbell_z,pitch_forearm,colour=classe,data=train1)
+grid.arrange(p1,p2,ncol=2)
+dev.off()
+```
+
+Error
+=====
+
+In sample error:
+-----------------
+```{r}
+pred_in<-predict(mod_rf,newdata=train1)
+confusionMatrix(pred_in,train1$classe) #99.98% accuracy
+```
+
+Out of sample error:
+--------------------
+```{r}
+pred_out<-predict(mod_rf,newdata=train2)
+confusionMatrix(pred_out,train2$classe) #99.64% accuracy
+```
+
+
+Conclusion:
+===============
+My conclusion is among these two (rpart, rf) random forest model is the best with >99% accuracy in both (in sampling and out of sampling) sampling cases. 
+
